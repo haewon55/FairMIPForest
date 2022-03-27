@@ -1,11 +1,11 @@
-## Environment ##
+## Environment
 
 To run the codes in this repo, you have to install Gurobi, AIF360, and their dependent libraries. The best way to do this is to create a new envrionment that clones the envrionment we used. You can do this by using the following commands:
 
 conda env create --name miss-fair --file=conda_env.yml
 conda activate miss-fair
 
-## Experiments ## 
+## Experiments 
 
 Our experiments can be replicated in the Jupyter notebooks in the datasets folder. 
 
