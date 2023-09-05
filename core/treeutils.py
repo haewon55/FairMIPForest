@@ -101,8 +101,7 @@ class DecisionTree(object):
         if fair is not None: 
             if lambd == 0 or S is None: 
                 raise ValueError
-            if fair not in ['fnr', 'fpr', 'acc']:
-                # TODO: implement 'eqodds'
+            if fair not in ['fnr', 'fpr', 'acc', 'eqodds']:
                 raise ValueError
 
         num_node = self.num_node
@@ -132,12 +131,17 @@ class DecisionTree(object):
 
         f0 = model.addVars(num_leaf, vtype=GRB.CONTINUOUS, name='f0')
         f1 = model.addVars(num_leaf, vtype=GRB.CONTINUOUS, name='f1')
+        f2_0 = model.addVars(num_leaf, vtype=GRB.CONTINUOUS, name='f2_0')
+        f2_1 = model.addVars(num_leaf, vtype=GRB.CONTINUOUS, name='f2_1')
+
         fair_reg = model.addVar(vtype=GRB.CONTINUOUS, name='fair_reg') 
 
         if fair is None:
             for l in range(num_leaf): 
                 f0[l].lb, f0[l].ub = 0, 0
                 f1[l].lb, f1[l].ub = 0, 0
+                f2_0[l].lb, f2_0[l].ub = 0, 0
+                f2_1[l].lb, f2_1[l].ub = 0, 0
             fair_reg.lb, fair_reg.ub = 0, 0
 
         
@@ -208,6 +212,10 @@ class DecisionTree(object):
                 model.addConstrs(f1[l] >= gp.quicksum(y[i]*z[i,l]*S[i] for i in range(n)) + mm*u[l] for l in range(num_leaf))
                 model.addConstrs(f1[l] <= gp.quicksum(y[i]*z[i,l]*S[i] for i in range(n)) +M*u[l] + epsilon for l in range(num_leaf))
 
+                model.addConstr(fair_reg >=0)
+                model.addConstr(fair_reg >= gp.quicksum(f0[l] for l in range(num_leaf))/n0 - gp.quicksum(f1[l] for l in range(num_leaf))/n1  )
+                model.addConstr(fair_reg >= -( gp.quicksum(f0[l] for l in range(num_leaf))/n0 - gp.quicksum(f1[l] for l in range(num_leaf))/n1  ))
+
             elif fair == 'fpr': 
                 n0, n1 = np.count_nonzero((S==0) & (y==0)), np.count_nonzero((S==1) & (y==0))
 
@@ -219,6 +227,10 @@ class DecisionTree(object):
                 model.addConstrs(f1[l] <= gp.quicksum((1-y[i])*z[i,l]*S[i] for i in range(n)) + M*(1-u[l])+epsilon for l in range(num_leaf))
                 model.addConstrs(f1[l] >= mm*u[l] for l in range(num_leaf))
                 model.addConstrs(f1[l] <= M*u[l] + epsilon for l in range(num_leaf))
+
+                model.addConstr(fair_reg >=0)
+                model.addConstr(fair_reg >= gp.quicksum(f0[l] for l in range(num_leaf))/n0 - gp.quicksum(f1[l] for l in range(num_leaf))/n1  )
+                model.addConstr(fair_reg >= -( gp.quicksum(f0[l] for l in range(num_leaf))/n0 - gp.quicksum(f1[l] for l in range(num_leaf))/n1  ))
 
             elif fair == 'fnr': 
                 n0, n1 = np.count_nonzero((S==0) & (y==1)), np.count_nonzero((S==1) & (y==1))
@@ -232,9 +244,47 @@ class DecisionTree(object):
                 model.addConstrs(f1[l] >= gp.quicksum(y[i]*z[i,l]*S[i] for i in range(n)) + mm*u[l] for l in range(num_leaf))
                 model.addConstrs(f1[l] <= gp.quicksum(y[i]*z[i,l]*S[i] for i in range(n)) +M*u[l] + epsilon for l in range(num_leaf))
 
-            model.addConstr(fair_reg >=0)
-            model.addConstr(fair_reg >= gp.quicksum(f0[l] for l in range(num_leaf))/n0 - gp.quicksum(f1[l] for l in range(num_leaf))/n1  )
-            model.addConstr(fair_reg >= -( gp.quicksum(f0[l] for l in range(num_leaf))/n0 - gp.quicksum(f1[l] for l in range(num_leaf))/n1  ))
+                model.addConstr(fair_reg >=0)
+                model.addConstr(fair_reg >= gp.quicksum(f0[l] for l in range(num_leaf))/n0 - gp.quicksum(f1[l] for l in range(num_leaf))/n1  )
+                model.addConstr(fair_reg >= -( gp.quicksum(f0[l] for l in range(num_leaf))/n0 - gp.quicksum(f1[l] for l in range(num_leaf))/n1  ))
+
+
+            elif fair == 'eqodds': 
+                # For FPR
+                n0, n1 = np.count_nonzero((S==0) & (y==0)), np.count_nonzero((S==1) & (y==0)) 
+                # For FNR
+                n2_0, n2_1 = np.count_nonzero((S==0) & (y==1)), np.count_nonzero((S==1) & (y==1))
+
+
+                # For FPR 
+                model.addConstrs(f0[l] >= gp.quicksum((1-y[i])*z[i,l]*(1-S[i]) for i in range(n)) + mm *(1-u[l]) for l in range(num_leaf))
+                model.addConstrs(f0[l] <= gp.quicksum((1-y[i])*z[i,l]*(1-S[i]) for i in range(n)) + M*(1-u[l])+epsilon for l in range(num_leaf))
+                model.addConstrs(f0[l] >= mm*u[l] for l in range(num_leaf))
+                model.addConstrs(f0[l] <= M*u[l] + epsilon for l in range(num_leaf))
+                model.addConstrs(f1[l] >= gp.quicksum((1-y[i])*z[i,l]*S[i] for i in range(n)) + mm *(1-u[l]) for l in range(num_leaf))
+                model.addConstrs(f1[l] <= gp.quicksum((1-y[i])*z[i,l]*S[i] for i in range(n)) + M*(1-u[l])+epsilon for l in range(num_leaf))
+                model.addConstrs(f1[l] >= mm*u[l] for l in range(num_leaf))
+                model.addConstrs(f1[l] <= M*u[l] + epsilon for l in range(num_leaf))
+                
+                # For FNR 
+                model.addConstrs(f2_0[l] >= mm *(1-u[l]) for l in range(num_leaf))
+                model.addConstrs(f2_0[l] <= M*(1-u[l])+epsilon for l in range(num_leaf))
+                model.addConstrs(f2_0[l] >= gp.quicksum(y[i]*z[i,l]*(1-S[i]) for i in range(n)) + mm*u[l] for l in range(num_leaf))
+                model.addConstrs(f2_0[l] <= gp.quicksum(y[i]*z[i,l]*(1-S[i]) for i in range(n)) +M*u[l] + epsilon for l in range(num_leaf))
+                model.addConstrs(f2_1[l] >= mm *(1-u[l]) for l in range(num_leaf))
+                model.addConstrs(f2_1[l] <= M*(1-u[l])+epsilon for l in range(num_leaf))
+                model.addConstrs(f2_1[l] >= gp.quicksum(y[i]*z[i,l]*S[i] for i in range(n)) + mm*u[l] for l in range(num_leaf))
+                model.addConstrs(f2_1[l] <= gp.quicksum(y[i]*z[i,l]*S[i] for i in range(n)) +M*u[l] + epsilon for l in range(num_leaf))
+
+                model.addConstr(fair_reg >=0)
+                model.addConstr(fair_reg >= 0.5*(gp.quicksum(f0[l] for l in range(num_leaf))/n0 - gp.quicksum(f1[l] for l in range(num_leaf))/n1) +\
+                                0.5*(gp.quicksum(f2_0[l] for l in range(num_leaf))/n2_0 - gp.quicksum(f2_1[l] for l in range(num_leaf))/n2_1))
+                model.addConstr(fair_reg >= 0.5*(gp.quicksum(f0[l] for l in range(num_leaf))/n0 - gp.quicksum(f1[l] for l in range(num_leaf))/n1) -\
+                                0.5*(gp.quicksum(f2_0[l] for l in range(num_leaf))/n2_0 - gp.quicksum(f2_1[l] for l in range(num_leaf))/n2_1))
+                model.addConstr(fair_reg >= -0.5*(gp.quicksum(f0[l] for l in range(num_leaf))/n0 - gp.quicksum(f1[l] for l in range(num_leaf))/n1) +\
+                                0.5*(gp.quicksum(f2_0[l] for l in range(num_leaf))/n2_0 - gp.quicksum(f2_1[l] for l in range(num_leaf))/n2_1))
+                model.addConstr(fair_reg >= -0.5*(gp.quicksum(f0[l] for l in range(num_leaf))/n0 - gp.quicksum(f1[l] for l in range(num_leaf))/n1) -\
+                                0.5*(gp.quicksum(f2_0[l] for l in range(num_leaf))/n2_0 - gp.quicksum(f2_1[l] for l in range(num_leaf))/n2_1))
 
 
         ###################
